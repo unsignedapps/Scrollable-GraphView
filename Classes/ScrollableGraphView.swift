@@ -2,7 +2,7 @@ import UIKit
 
 // MARK: - ScrollableGraphView
 @IBDesignable
-@objc public class ScrollableGraphView: UIScrollView, UIScrollViewDelegate, ScrollableGraphViewDrawingDelegate {
+@objc public class ScrollableGraphView: UIScrollView, UIScrollViewDelegate, ScrollableGraphViewDrawingDelegate, ScrollableGraphViewDataSource {
     
     // MARK: - Public Properties
     // Use these to customise the graph.
@@ -253,7 +253,7 @@ import UIKit
     private var labelPool = LabelPool()
     
     // Graph Drawing
-    private var graphPoints = [GraphPoint]()
+	private var graphPoints = [Int: GraphPoint]()
     
     private var drawingView = UIView()
     private var barLayer: BarDrawingLayer?
@@ -290,16 +290,20 @@ import UIKit
             }
         }
     }
+	
+	private var dataSource: ScrollableGraphViewDataSource!
     
     // MARK: - INIT, SETUP & VIEWPORT RESIZING
     // #######################################
     
     override public init(frame: CGRect) {
         super.init(frame: frame)
+		self.dataSource = self
     }
     
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
+		self.dataSource = self
     }
     
     deinit {
@@ -325,7 +329,7 @@ import UIKit
         self.viewportWidth = self.frame.width
         self.viewportHeight = self.frame.height
         
-        totalGraphWidth = graphWidthForNumberOfDataPoints(data.count)
+        totalGraphWidth = graphWidthForNumberOfDataPoints(self.dataSource.graphViewNumberOfPoints())
         self.contentSize = CGSize(width: totalGraphWidth, height: viewportHeight)
         
         // Scrolling direction.
@@ -370,7 +374,7 @@ import UIKit
         let viewport = CGRect(x: 0, y: 0, width: viewportWidth, height: viewportHeight)
         
         // Create all the GraphPoints which which are used for drawing.
-        for i in 0 ..< data.count {
+        for i in initialActivePointsInterval.generate() {
             #if TARGET_INTERFACE_BUILDER
             let value = data[i]
             #else
@@ -379,9 +383,9 @@ import UIKit
             
             let position = calculatePosition(i, value: value)
             let point = GraphPoint(position: position)
-            graphPoints.append(point)
+            graphPoints[i] = point
         }
-        
+		
         // Drawing Layers
         drawingView = UIView(frame: viewport)
         drawingView.backgroundColor = backgroundFillColor
@@ -534,7 +538,7 @@ import UIKit
     private func updateUI() {
         
         // Make sure we have data, if don't, just get out. We can't do anything without any data.
-        guard data.count > 0 else {
+        guard self.dataSource.graphViewNumberOfPoints() > 0 else {
             return
         }
         
@@ -568,6 +572,14 @@ import UIKit
             let newActivePointsInterval = calculateActivePointsInterval()
             self.previousActivePointsInterval = self.activePointsInterval
             self.activePointsInterval = newActivePointsInterval
+			
+			// load in those graphPoints if we don't have them
+			for i in newActivePointsInterval.generate() {
+				if graphPoints[i] != nil  { continue }
+				
+				let value = self.dataSource.graphViewData(at: i)
+				graphPoints[i] = GraphPoint(position: calculatePosition(i, value: value))
+			}
             
             // If adaption is enabled we want to
             if(shouldAdaptRange) {
@@ -620,6 +632,20 @@ import UIKit
         }
     }
     
+	public func setDataSource(dataSource: ScrollableGraphViewDataSource) {
+		
+		// If we are setting exactly the same dthere's no need to re-init everything.
+		if (self.dataSource.isEqual(dataSource)) {
+			return
+		}
+		
+		self.dataNeedsReloading = true
+		
+		if(!isInitialSetup) {
+			updateUI()
+		}
+	}
+	
     // MARK: - Private Methods
     // #######################
     
@@ -725,7 +751,7 @@ import UIKit
         
         // Add and minus two so the path goes "off the screen" so we can't see where it ends.
         let minPossible = 0
-        let maxPossible = data.count - 1
+        let maxPossible = self.dataSource.graphViewNumberOfPoints() - 1
         
         let numberOfPointsOffscreen = 2
         
@@ -737,7 +763,7 @@ import UIKit
     
     private func calculateRangeForActivePointsInterval(interval: Range<Int>) -> (min: Double, max: Double) {
         
-        let dataForActivePoints = data[interval]
+		let dataForActivePoints = self.dataSource.graphViewData(slice: interval)
         
         // We don't have any active points, return defaults.
         if(dataForActivePoints.count == 0) {
@@ -751,7 +777,7 @@ import UIKit
     }
     
     private func calculateRangeForEntireDataset(data: [Double]) -> (min: Double, max: Double) {
-        let range = calculateRange(self.data)
+        let range = calculateRange(data)
         return cleanRange(range)
     }
     
@@ -853,43 +879,43 @@ import UIKit
         // Connect the line to the starting edge if we are filling it.
         if(shouldFill) {
             // Add a line from the base of the graph to the first data point.
-            let firstDataPoint = graphPoints[activePointsInterval.startIndex]
-            
-            let viewportLeftZero = CGPoint(x: firstDataPoint.x - (leftmostPointPadding), y: zeroYPosition)
-            let leftFarEdgeTop = CGPoint(x: firstDataPoint.x - (leftmostPointPadding + viewportWidth), y: zeroYPosition)
-            let leftFarEdgeBottom = CGPoint(x: firstDataPoint.x - (leftmostPointPadding + viewportWidth), y: viewportHeight)
-            
-            currentLinePath.moveToPoint(leftFarEdgeBottom)
-            pathSegmentAdder(startPoint: leftFarEdgeBottom, endPoint: leftFarEdgeTop, inPath: currentLinePath)
-            pathSegmentAdder(startPoint: leftFarEdgeTop, endPoint: viewportLeftZero, inPath: currentLinePath)
-            pathSegmentAdder(startPoint: viewportLeftZero, endPoint: CGPoint(x: firstDataPoint.x, y: firstDataPoint.y), inPath: currentLinePath)
+			if let firstDataPoint = graphPoints[activePointsInterval.startIndex] {
+				
+				let viewportLeftZero = CGPoint(x: firstDataPoint.x - (leftmostPointPadding), y: zeroYPosition)
+				let leftFarEdgeTop = CGPoint(x: firstDataPoint.x - (leftmostPointPadding + viewportWidth), y: zeroYPosition)
+				let leftFarEdgeBottom = CGPoint(x: firstDataPoint.x - (leftmostPointPadding + viewportWidth), y: viewportHeight)
+				
+				currentLinePath.moveToPoint(leftFarEdgeBottom)
+				pathSegmentAdder(startPoint: leftFarEdgeBottom, endPoint: leftFarEdgeTop, inPath: currentLinePath)
+				pathSegmentAdder(startPoint: leftFarEdgeTop, endPoint: viewportLeftZero, inPath: currentLinePath)
+				pathSegmentAdder(startPoint: viewportLeftZero, endPoint: CGPoint(x: firstDataPoint.x, y: firstDataPoint.y), inPath: currentLinePath)
+			}
         }
-        else {
-            let firstDataPoint = graphPoints[activePointsInterval.startIndex]
+		else if let firstDataPoint = graphPoints[activePointsInterval.startIndex] {
             currentLinePath.moveToPoint(firstDataPoint.location)
         }
         
         // Connect each point on the graph with a segment.
         for i in activePointsInterval.startIndex ..< activePointsInterval.endIndex - 1 {
             
-            let startPoint = graphPoints[i].location
-            let endPoint = graphPoints[i+1].location
-            
-            pathSegmentAdder(startPoint: startPoint, endPoint: endPoint, inPath: currentLinePath)
+			if let startPoint = graphPoints[i]?.location, let endPoint = graphPoints[i+1]?.location {
+				pathSegmentAdder(startPoint: startPoint, endPoint: endPoint, inPath: currentLinePath)
+			}
         }
         
         // Connect the line to the ending edge if we are filling it.
         if(shouldFill) {
             // Add a line from the last data point to the base of the graph.
-            let lastDataPoint = graphPoints[activePointsInterval.endIndex - 1]
-            
-            let viewportRightZero = CGPoint(x: lastDataPoint.x + (rightmostPointPadding), y: zeroYPosition)
-            let rightFarEdgeTop = CGPoint(x: lastDataPoint.x + (rightmostPointPadding + viewportWidth), y: zeroYPosition)
-            let rightFarEdgeBottom = CGPoint(x: lastDataPoint.x + (rightmostPointPadding + viewportWidth), y: viewportHeight)
-            
-            pathSegmentAdder(startPoint: lastDataPoint.location, endPoint: viewportRightZero, inPath: currentLinePath)
-            pathSegmentAdder(startPoint: viewportRightZero, endPoint: rightFarEdgeTop, inPath: currentLinePath)
-            pathSegmentAdder(startPoint: rightFarEdgeTop, endPoint: rightFarEdgeBottom, inPath: currentLinePath)
+			if let lastDataPoint = graphPoints[activePointsInterval.endIndex - 1] {
+				
+				let viewportRightZero = CGPoint(x: lastDataPoint.x + (rightmostPointPadding), y: zeroYPosition)
+				let rightFarEdgeTop = CGPoint(x: lastDataPoint.x + (rightmostPointPadding + viewportWidth), y: zeroYPosition)
+				let rightFarEdgeBottom = CGPoint(x: lastDataPoint.x + (rightmostPointPadding + viewportWidth), y: viewportHeight)
+				
+				pathSegmentAdder(startPoint: lastDataPoint.location, endPoint: viewportRightZero, inPath: currentLinePath)
+				pathSegmentAdder(startPoint: viewportRightZero, endPoint: rightFarEdgeTop, inPath: currentLinePath)
+				pathSegmentAdder(startPoint: rightFarEdgeTop, endPoint: rightFarEdgeBottom, inPath: currentLinePath)
+			}
         }
         
         return currentLinePath
@@ -992,7 +1018,7 @@ import UIKit
         for point in activatedPoints {
             let label = labelPool.activateLabelForPointIndex(point)
             
-            label.text = (point < labels.count) ? labels[point] : ""
+			label.text = (point < labels.count) ? self.dataSource.graphViewLabel(at: point) : ""
             label.textColor = dataPointLabelColor
             label.font = dataPointLabelFont
             
@@ -1069,21 +1095,22 @@ import UIKit
         //let numberOfPointsToAnimate = pointsToAnimate.endIndex - pointsToAnimate.startIndex
         var index = 0
         for i in pointsToAnimate {
-            let newPosition = calculatePosition(i, value: data[i])
-            let point = graphPoints[i]
-            animatePoint(point, toPosition: newPosition, withDelay: Double(index) * stagger)
-            index += 1
+            let newPosition = calculatePosition(i, value: self.dataSource.graphViewData(at: i))
+			if let point = graphPoints[i] {
+				animatePoint(point, toPosition: newPosition, withDelay: Double(index) * stagger)
+			}
+			index += 1
         }
         
         // Update any non-visible & non-animating points so they come on to screen at the right scale.
-        for i in 0 ..< graphPoints.count {
-            if(i > pointsToAnimate.startIndex && i < pointsToAnimate.endIndex || graphPoints[i].currentlyAnimatingToPosition) {
+        for (i, _) in graphPoints.enumerate() {
+            if(i > pointsToAnimate.startIndex && i < pointsToAnimate.endIndex || graphPoints[i]?.currentlyAnimatingToPosition == true) {
                 continue
             }
             
-            let newPosition = calculatePosition(i, value: data[i])
-            graphPoints[i].x = newPosition.x
-            graphPoints[i].y = newPosition.y
+            let newPosition = calculatePosition(i, value: self.dataSource.graphViewData(at: i))
+            graphPoints[i]?.x = newPosition.x
+            graphPoints[i]?.y = newPosition.y
         }
     }
     
@@ -1101,8 +1128,27 @@ import UIKit
     }
     
     private func graphPointForIndex(index: Int) -> GraphPoint {
-        return graphPoints[index]
+        return graphPoints[index]!
     }
+	
+	// MARK: - Data Source
+	
+	public func graphViewNumberOfPoints() -> Int {
+		return data.count
+	}
+	
+	public func graphViewData(slice interval: Range<Int>) -> [Double] {
+		let slice: ArraySlice<Double> = data[interval]
+		return Array(slice)
+	}
+	
+	public func graphViewData(at index: Int) -> Double {
+		return data[index]
+	}
+	
+	public func graphViewLabel(at index: Int) -> String {
+		return labels[index]
+	}
 }
 
 // MARK: - LabelPool
