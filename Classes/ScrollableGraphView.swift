@@ -158,7 +158,7 @@ import UIKit
     /// If adaptAnimationType is set to .Custom, then this is the easing function you would like applied for the animation.
     public var customAnimationEasingFunction: ((t: Double) -> Double)?
     /// Whether or not the graph should animate to their positions when the graph is first displayed.
-    @IBInspectable public var shouldAnimateOnStartup: Bool = true
+    @IBInspectable public var shouldAnimateOnStartup: ScrollableGraphViewStartupAnimationType = .Individual
     
     // Reference Lines
     // ###############
@@ -374,7 +374,7 @@ import UIKit
             #if TARGET_INTERFACE_BUILDER
             let value = data[i]
             #else
-            let value = (shouldAnimateOnStartup) ? self.range.min : data[i]
+            let value = (shouldAnimateOnStartup != .None) ? self.range.min : data[i]
             #endif
             
             let position = calculatePosition(i, value: value)
@@ -542,10 +542,13 @@ import UIKit
         if (dataNeedsReloading) {
             setup()
             
-            if(shouldAnimateOnStartup) {
+            if(shouldAnimateOnStartup == .Individual) {
                 startAnimations(withStaggerValue: 0.15)
             }
-            
+			else if(shouldAnimateOnStartup == .All) {
+				startAnimations()
+			}
+			
             // We're done setting up.
             dataNeedsReloading = false
             isInitialSetup = false
@@ -1060,7 +1063,7 @@ import UIKit
         var pointsToAnimate = 0 ..< 0
         
         #if !TARGET_INTERFACE_BUILDER
-        if (shouldAnimateOnAdapt || (dataNeedsReloading && shouldAnimateOnStartup)) {
+        if (shouldAnimateOnAdapt || (dataNeedsReloading && shouldAnimateOnStartup != .None)) {
             pointsToAnimate = activePointsInterval
         }
         #endif
@@ -1579,9 +1582,9 @@ private class GradientDrawingLayer : ScrollableGraphViewDrawingLayer {
         
         switch(gradientType) {
         case .Linear:
-            CGContextDrawLinearGradient(ctx, gradient, topCentre, bottomCentre, .DrawsAfterEndLocation)
+            CGContextDrawLinearGradient(ctx, gradient!, topCentre, bottomCentre, .DrawsAfterEndLocation)
         case .Radial:
-            CGContextDrawRadialGradient(ctx, gradient, topCentre, startRadius, topCentre, endRadius, .DrawsAfterEndLocation)
+            CGContextDrawRadialGradient(ctx, gradient!, topCentre, startRadius, topCentre, endRadius, .DrawsAfterEndLocation)
         }
     }
 }
@@ -1987,6 +1990,11 @@ private class ReferenceLineDrawingView : UIView {
     case RightToLeft
 }
 
+@objc public enum ScrollableGraphViewStartupAnimationType: Int {
+	case None
+	case Individual
+	case All
+}
 // Simplified easing functions from: http://www.joshondesign.com/2013/03/01/improvedEasingEquations
 private struct Easings {
     
