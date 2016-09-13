@@ -212,6 +212,8 @@ import UIKit
     
     /// Whether or not to show the labels on the x-axis for each point.
     @IBInspectable public var shouldShowLabels: Bool = true
+	/// Whether the data points labels should be shown at the top of the graph or the bottom
+	@IBInspectable public var dataPointLabelPosition: ScrollableGraphViewDataPointLabelPosition = .Bottom;
     /// How far from the "minimum" reference line the data point labels should be rendered.
     @IBInspectable public var dataPointLabelTopMargin: CGFloat = 10
     /// How far from the bottom of the view the data point labels should be rendered.
@@ -483,13 +485,19 @@ import UIKit
     
     private func addReferenceLines(inViewport viewport: CGRect) {
         var referenceLineBottomMargin = bottomMargin
+		var referenceLineTopMargin = topMargin
         if(shouldShowLabels && dataPointLabelFont != nil) {
-            referenceLineBottomMargin += (dataPointLabelFont!.pointSize + dataPointLabelTopMargin + dataPointLabelBottomMargin)
+			switch dataPointLabelPosition {
+			case .Bottom:
+				referenceLineBottomMargin += (dataPointLabelFont!.pointSize + dataPointLabelTopMargin + dataPointLabelBottomMargin)
+			case .Top:
+				referenceLineTopMargin += (dataPointLabelFont!.pointSize + dataPointLabelTopMargin + dataPointLabelBottomMargin)
+			}
         }
         
         referenceLineView = ReferenceLineDrawingView(
             frame: viewport,
-            topMargin: topMargin,
+            topMargin: referenceLineTopMargin,
             bottomMargin: referenceLineBottomMargin,
             referenceLineColor: self.referenceLineColor,
             referenceLineThickness: self.referenceLineThickness)
@@ -823,8 +831,11 @@ import UIKit
         if(shouldShowLabels && dataPointLabelFont != nil) { graphHeight -= (dataPointLabelFont!.pointSize + dataPointLabelTopMargin + dataPointLabelBottomMargin) }
         
         let x = (CGFloat(index) * dataPointSpacing) + leftmostPointPadding
-        let y = (CGFloat((value - rangeMax) / (rangeMin - rangeMax)) * graphHeight) + topMargin
-        
+        var y = (CGFloat((value - rangeMax) / (rangeMin - rangeMax)) * graphHeight) + topMargin
+		
+		// we need to move everything down if the labels go on top
+		if dataPointLabelPosition == .Top { y += dataPointLabelFont!.pointSize + dataPointLabelTopMargin + dataPointLabelBottomMargin }
+		
         return CGPoint(x: x, y: y)
     }
     
@@ -1001,7 +1012,10 @@ import UIKit
             // self.range.min is the current ranges minimum that has been detected
             // self.rangeMin is the minimum that should be used as specified by the user
             let rangeMin = (shouldAutomaticallyDetectRange || shouldAdaptRange) ? self.range.min : self.rangeMin
-            let position = calculatePosition(point, value: rangeMin)
+            var position = calculatePosition(point, value: rangeMin)
+			
+			// if we're on top we reset the position to zero
+			if dataPointLabelPosition == .Top { position.y = 0 }
             
             label.frame = CGRect(origin: CGPoint(x: position.x - label.frame.width / 2, y: position.y + dataPointLabelTopMargin), size: label.frame.size)
             
@@ -1985,6 +1999,11 @@ private class ReferenceLineDrawingView : UIView {
 @objc public enum ScrollableGraphViewDirection : Int {
     case LeftToRight
     case RightToLeft
+}
+
+@objc public enum ScrollableGraphViewDataPointLabelPosition: Int {
+	case Bottom
+	case Top
 }
 
 // Simplified easing functions from: http://www.joshondesign.com/2013/03/01/improvedEasingEquations
