@@ -229,9 +229,12 @@ import UIKit
     // Graph Data for Display
     private var data = [Double]()
     private var labels = [String]()
+	
+	private var previousData: [Double]? = nil
     
     private var isInitialSetup = true
     private var dataNeedsReloading = true
+	private var maintainOffset = false
     private var isCurrentlySettingUp = false
     
     private var viewportWidth: CGFloat = 0 {
@@ -324,7 +327,9 @@ import UIKit
         // Calculate the viewport and drawing frames.
         self.viewportWidth = self.frame.width
         self.viewportHeight = self.frame.height
-        
+		
+		let existingOffsetWith: CGFloat = maintainOffset ? (self.contentSize.width - viewportWidth - offsetWidth) : 0;
+		
         totalGraphWidth = graphWidthForNumberOfDataPoints(data.count)
         self.contentSize = CGSize(width: totalGraphWidth, height: viewportHeight)
         
@@ -333,11 +338,11 @@ import UIKit
             self.offsetWidth = 0
         #else
         if (direction == .RightToLeft) {
-            self.offsetWidth = self.contentSize.width - viewportWidth
+            self.offsetWidth = self.contentSize.width - viewportWidth + existingOffsetWith
         }
             // Otherwise start of all the way to the left.
         else {
-            self.offsetWidth = 0
+            self.offsetWidth = existingOffsetWith
         }
         #endif
         
@@ -610,7 +615,7 @@ import UIKit
         if(self.data == data && self.labels == labels) {
             return
         }
-        
+		
         self.dataNeedsReloading = true
         self.data = data
         self.labels = labels
@@ -619,10 +624,27 @@ import UIKit
             updateUI()
         }
     }
-    
+
+	public func updateData(data: [Double], withLabels labels: [String]?=nil) {
+		
+		
+//		self.previousData = self.data
+		self.data = data
+		
+		if let labels = labels {
+			self.labels = labels
+		}
+		
+		self.dataNeedsReloading = true
+		self.maintainOffset = false
+		updateUI()
+		
+		self.previousData = nil;
+	}
+
     // MARK: - Private Methods
     // #######################
-    
+	
     // MARK: Animation
     
     // Animation update loop for co-domain changes.
