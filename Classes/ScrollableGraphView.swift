@@ -206,7 +206,9 @@ import UIKit
     @IBInspectable public var referenceLineNumberOfDecimalPlaces: Int = 0
     /// The NSNumberFormatterStyle that reference lines should use to display
     @IBInspectable public var referenceLineNumberStyle: NSNumberFormatterStyle = .NoStyle
-    
+	/// A NSFormatter to use to format the labels. Overwrites the other label related settings
+	public var referenceLineFormatter: NSFormatter?
+	
     // Data Point Labels
     // #################
     
@@ -509,6 +511,7 @@ import UIKit
         referenceLineView?.labelColor = self.referenceLineLabelColor
         referenceLineView?.labelDecimalPlaces = self.referenceLineNumberOfDecimalPlaces
         referenceLineView?.labelNumberStyle = self.referenceLineNumberStyle
+		referenceLineView?.labelFormatter = self.referenceLineFormatter
         
         referenceLineView?.setRange(self.range)
         self.addSubview(referenceLineView!)
@@ -1626,6 +1629,7 @@ private class ReferenceLineDrawingView : UIView {
     var labelColor: UIColor = UIColor.blackColor()
     var labelDecimalPlaces: Int = 2
     var labelNumberStyle: NSNumberFormatterStyle = .NoStyle
+	var labelFormatter: NSFormatter?
     
     // PRIVATE PROPERTIES
     
@@ -1709,10 +1713,10 @@ private class ReferenceLineDrawingView : UIView {
         let minLineStart = CGPoint(x: 0, y: self.bounds.height - bottomMargin)
         let minLineEnd = CGPoint(x: lineWidth, y: self.bounds.height - bottomMargin)
         
-        let numberFormatter = referenceNumberFormatter()
-        
-        let maxString = numberFormatter.stringFromNumber(self.currentRange.max)! + units
-        let minString = numberFormatter.stringFromNumber(self.currentRange.min)! + units
+        let numberFormatter = self.labelFormatter ?? referenceNumberFormatter()
+
+		let maxString = numberFormatter.stringForObjectValue(self.currentRange.max)! + units
+        let minString = numberFormatter.stringForObjectValue(self.currentRange.min)! + units
         
         addLineWithTag(maxString, from: maxLineStart, to: maxLineEnd, inPath: referenceLinePath)
         addLineWithTag(minString, from: minLineStart, to: minLineEnd, inPath: referenceLinePath)
@@ -1781,8 +1785,8 @@ private class ReferenceLineDrawingView : UIView {
         if(shouldAddLabelsToIntermediateReferenceLines) {
             
             let value = calculateYAxisValueForPoint(lineStart)
-            let numberFormatter = referenceNumberFormatter()
-            var valueString = numberFormatter.stringFromNumber(value)!
+            let numberFormatter = self.labelFormatter ?? referenceNumberFormatter()
+            var valueString = numberFormatter.stringForObjectValue(value)!
             
             if(shouldAddUnitsToIntermediateReferenceLineLabels) {
                 valueString += " \(units)"
